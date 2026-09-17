@@ -15,7 +15,7 @@ env:
   ORCHA_DESKTOP_UPDATE_FEED_URL: ${{ vars.ORCHA_DESKTOP_UPDATE_FEED_URL }}
   ORCHA_DESKTOP_UPDATE_FEED_MODE: static
   ORCHA_DESKTOP_UPDATE_PUBLIC_BASE_URL: https://onepoke2.github.io/orcha-desktop-updates/updates
-  ORCHA_SOURCE_ARCHIVE_URL: https://github.com/OnePoke2/orcha-desktop/raw/refs/heads/main/Orcha-Desktop-source-1.0.0.zip
+  ORCHA_SOURCE_ARCHIVE_URL: https://api.github.com/repos/OnePoke2/orcha-desktop/contents/Orcha-Desktop-source-1.0.0.zip
 jobs:
   windows:
     runs-on: windows-latest
@@ -32,7 +32,7 @@ jobs:
       - shell: pwsh
         run: |
           $keys=@('ORCHA_DESKTOP_APP_URL','ORCHA_DESKTOP_UPDATE_FEED_URL','ORCHA_SOURCE_READ_TOKEN','WINDOWS_CERTIFICATE_BASE64','WINDOWS_CERTIFICATE_PASSWORD'); $missing=$keys|?{[string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_))}; if($missing){throw "Missing: $($missing -join ', ')"}
-          Invoke-WebRequest -Headers @{Authorization="Bearer $env:ORCHA_SOURCE_READ_TOKEN"} -Uri $env:ORCHA_SOURCE_ARCHIVE_URL -OutFile source.zip; Expand-Archive source.zip source
+          Invoke-WebRequest -Headers @{Authorization="Bearer $env:ORCHA_SOURCE_READ_TOKEN"; Accept="application/vnd.github.raw+json"} -Uri $env:ORCHA_SOURCE_ARCHIVE_URL -OutFile source.zip; Expand-Archive source.zip source
           $bytes=[Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64); $cert="$env:RUNNER_TEMP/orcha.pfx"; [IO.File]::WriteAllBytes($cert,$bytes); "WINDOWS_CERTIFICATE_FILE=$cert"|Out-File $env:GITHUB_ENV -Append -Encoding utf8
       - working-directory: source
         run: pnpm install --frozen-lockfile
@@ -58,7 +58,7 @@ jobs:
         with: { node-version: 22 }
       - run: |
           for key in ORCHA_DESKTOP_APP_URL ORCHA_DESKTOP_UPDATE_FEED_URL ORCHA_SOURCE_READ_TOKEN APPLE_CERTIFICATE_BASE64 APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_API_KEY_BASE64 APPLE_API_KEY_ID APPLE_API_ISSUER; do test -n "${!key}" || { echo "Missing: $key" >&2; exit 1; }; done
-          curl --fail -L -H "Authorization: Bearer $ORCHA_SOURCE_READ_TOKEN" "$ORCHA_SOURCE_ARCHIVE_URL" -o source.zip; unzip -q source.zip -d source
+          curl --fail -L -H "Authorization: Bearer $ORCHA_SOURCE_READ_TOKEN" -H "Accept: application/vnd.github.raw+json" "$ORCHA_SOURCE_ARCHIVE_URL" -o source.zip; unzip -q source.zip -d source
           cert="$RUNNER_TEMP/orcha.p12"; keychain="$RUNNER_TEMP/orcha.keychain-db"; password="$(uuidgen)"; echo "$APPLE_CERTIFICATE_BASE64"|base64 --decode > "$cert"; security create-keychain -p "$password" "$keychain"; security unlock-keychain -p "$password" "$keychain"; security import "$cert" -k "$keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign; security list-keychain -d user -s "$keychain"; security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain"
           key="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"; echo "$APPLE_API_KEY_BASE64"|base64 --decode > "$key"; echo "APPLE_API_KEY=$key" >> "$GITHUB_ENV"
       - working-directory: source
@@ -70,7 +70,7 @@ jobs:
   publish:
     needs: [windows, macos]
     runs-on: ubuntu-latest
-    env: { GH_TOKEN: ${{ github.token }} }
+    env: { GH_TOKEN: "${{ github.token }}" }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
